@@ -1,0 +1,71 @@
+{
+  "kind": "collectionType",
+  "collectionName": "payrolls",
+  "info": {
+    "singularName": "payroll",
+    "pluralName": "payrolls",
+    "displayName": "Payroll",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "employee": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::employee.employee"
+    },
+    "month": {
+      "type": "string"
+    },
+    "year": {
+      "type": "biginteger"
+    },
+    "present_days": {
+      "type": "integer"
+    },
+    "absent_days": {
+      "type": "integer"
+    },
+    "working_days": {
+      "type": "integer"
+    },
+    "gross_salary": {
+      "type": "integer"
+    },
+    "deductions": {
+      "type": "integer"
+    },
+    "net_salary": {
+      "type": "integer"
+    },
+    "basic": {
+      "type": "integer"
+    },
+    "hra": {
+      "type": "integer"
+    },
+    "transport_allowance": {
+      "type": "integer"
+    },
+    "medical_allowance": {
+      "type": "integer"
+    },
+    "fixed_allowance": {
+      "type": "integer"
+    },
+    "generated_at": {
+      "type": "datetime"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "Pending",
+        "Generated",
+        "Paid"
+      ]
+    }
+  }
+}

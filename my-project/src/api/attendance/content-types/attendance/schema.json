@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "attendances",
+  "info": {
+    "singularName": "attendance",
+    "pluralName": "attendances",
+    "displayName": "Attendance",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "date": {
+      "type": "date"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "present",
+        "absent",
+        "late",
+        "leave"
+      ]
+    },
+    "employee": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::employee.employee",
+      "inversedBy": "attendances"
+    },
+    "checkIn": {
+      "type": "time"
+    },
+    "checkOut": {
+      "type": "time"
+    },
+    "workingHours": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}

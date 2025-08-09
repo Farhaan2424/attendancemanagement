@@ -1,0 +1,11 @@
+[
+  {
+    "method": "POST",
+    "path": "/auth/local",
+    "handler": "auth.login",
+    "config": {
+      "prefix": "",
+      "policies": []
+    }
+  }
+]

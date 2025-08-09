@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "justifications",
+  "info": {
+    "singularName": "justification",
+    "pluralName": "justifications",
+    "displayName": "Justification",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "employee": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::employee.employee"
+    },
+    "attendance": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::attendance.attendance"
+    },
+    "date": {
+      "type": "date"
+    },
+    "time": {
+      "type": "time"
+    },
+    "reason": {
+      "type": "blocks"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ]
+    },
+    "type": {
+      "type": "string"
+    }
+  }
+}

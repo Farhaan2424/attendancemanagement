@@ -1,0 +1,134 @@
+{
+  "kind": "collectionType",
+  "collectionName": "employees",
+  "info": {
+    "singularName": "employee",
+    "pluralName": "employees",
+    "displayName": "Employee",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string"
+    },
+    "employeeid": {
+      "type": "uid",
+      "required": true
+    },
+    "email": {
+      "type": "email"
+    },
+    "Employee": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "position": {
+      "type": "string"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "active",
+        "inactive"
+      ]
+    },
+    "joinDate": {
+      "type": "date"
+    },
+    "attendances": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::attendance.attendance",
+      "mappedBy": "employee"
+    },
+    "users_permissions_user": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "department": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "officeLocation": {
+      "type": "string"
+    },
+    "fathersName": {
+      "type": "string"
+    },
+    "pan": {
+      "type": "string"
+    },
+    "personalEmail": {
+      "type": "email"
+    },
+    "residentialAddress": {
+      "type": "text"
+    },
+    "differentlyAbled": {
+      "type": "string"
+    },
+    "paymentMode": {
+      "type": "string"
+    },
+    "accountNumber": {
+      "type": "string"
+    },
+    "bankName": {
+      "type": "string"
+    },
+    "ifsc": {
+      "type": "string"
+    },
+    "accountType": {
+      "type": "enumeration",
+      "enum": [
+        "savings",
+        "current"
+      ]
+    },
+    "accountHolderName": {
+      "type": "string"
+    },
+    "dob": {
+      "type": "date"
+    },
+    "gender": {
+      "type": "string"
+    },
+    "monthly_ctc": {
+      "type": "integer"
+    },
+    "basic_percentage": {
+      "type": "decimal"
+    },
+    "hra_percentage": {
+      "type": "decimal"
+    },
+    "transport_allowance": {
+      "type": "integer"
+    },
+    "medical_allowance": {
+      "type": "integer"
+    },
+    "fixed_allowance": {
+      "type": "integer"
+    },
+    "role": {
+      "type": "enumeration",
+      "enum": [
+        "HR",
+        "Employee",
+        "Admin",
+        "Manager"
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "providers": {
+    "local": {
+      "enabled": true,
+      "displayName": "Email",
+      "icon": "envelope",
+      "config": {
+        "identifierField": "email",
+        "passwordField": "password"
+      }
+    }
+  }
+  
+}
+
+
