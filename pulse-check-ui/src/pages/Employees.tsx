@@ -17,6 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -52,6 +54,10 @@ export default function Employees() {
     officeLocation: "",
   });
 
+  // Defaulting to an empty string to ensure a check is performed after fetch
+  const [userRole, setUserRole] = useState(null); 
+  const [showAccessDeniedDialog, setShowAccessDeniedDialog] = useState(false);
+
   const navigate = useNavigate();
   const token = localStorage.getItem("jwt_token");
 
@@ -61,6 +67,19 @@ export default function Employees() {
     },
   };
 
+  const fetchUserRole = async () => {
+    if (!token) return;
+    try {
+      const res = await axios.get("http://localhost:1337/api/users/me?populate=role", authConfig);
+      // Assuming the API response is structured as res.data.role.name
+      setUserRole(res.data.role?.name.toLowerCase());
+    } catch (err) {
+      console.error("Failed to fetch user role:", err);
+      // In case of error, set a default role or handle as unauthenticated
+      setUserRole("guest");
+    }
+  };
+
   const fetchEmployees = async () => {
     if (!token) {
       console.error("Authentication token not found.");
@@ -68,7 +87,7 @@ export default function Employees() {
     }
     try {
       const res = await axios.get(
-        "http://localhost:1337/api/employees",
+        "http://localhost:1337/api/employees?pagination[pageSize]=1000",
         authConfig
       );
       const formatted = res.data.data.map((emp) => ({
@@ -87,11 +106,18 @@ export default function Employees() {
 
   useEffect(() => {
     if (token) {
+      fetchUserRole();
       fetchEmployees();
     }
   }, [token]);
 
   const handleAdd = async () => {
+    if (userRole !== "admin" && userRole !== "hr") {
+      setIsAddDialogOpen(false);
+      setShowAccessDeniedDialog(true);
+      return;
+    }
+
     if (!token) {
       console.error("Authentication token not found.");
       return;
@@ -139,6 +165,11 @@ export default function Employees() {
   };
 
   const handleDelete = async (employeeId) => {
+    if (userRole !== "admin" && userRole !== "hr") {
+      setShowAccessDeniedDialog(true);
+      return;
+    }
+
     if (!token) {
       console.error("Authentication token not found.");
       return;
@@ -199,10 +230,19 @@ export default function Employees() {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-1/3"
         />
+        <Button
+          onClick={() => {
+            if (userRole === "admin" || userRole === "hr") {
+              setIsAddDialogOpen(true);
+            } else {
+              setShowAccessDeniedDialog(true);
+            }
+          }}
+        >
+          Add Employee
+        </Button>
+
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>Add Employee</Button>
-          </DialogTrigger>
           <DialogContent className="max-h-[90vh] overflow-y-auto max-w-3xl">
             <DialogHeader>
               <DialogTitle>Add Employee</DialogTitle>
@@ -222,7 +262,6 @@ export default function Employees() {
                   />
                 </div>
               ))}
-
               <div>
                 <Label className="mb-1 block">Gender</Label>
                 <RadioGroup
@@ -242,7 +281,6 @@ export default function Employees() {
                   </div>
                 </RadioGroup>
               </div>
-
               <div>
                 <Label className="mb-1 block">Status</Label>
                 <RadioGroup
@@ -269,7 +307,6 @@ export default function Employees() {
           </DialogContent>
         </Dialog>
       </div>
-
       <Table>
         <TableHeader>
           <TableRow>
@@ -309,21 +346,37 @@ export default function Employees() {
               </TableCell>
               <TableCell>{employee.joinDate}</TableCell>
               <TableCell>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(employee.id);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4 text-red-500" />
-                </Button>
+                {(userRole === "admin" || userRole === "hr") && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(employee.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      
+      <Dialog open={showAccessDeniedDialog} onOpenChange={setShowAccessDeniedDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Access Denied</DialogTitle>
+            <DialogDescription>
+              You do not have the necessary permissions to perform this action.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setShowAccessDeniedDialog(false)}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

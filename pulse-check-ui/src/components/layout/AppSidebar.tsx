@@ -45,9 +45,7 @@ const employeeMenuItems = [
   { title: "My Payroll", url: "/my-payroll", icon: DollarSign },
 ];
 
-const settingsItems = [
-  { title: "Settings", url: "/settings", icon: Settings },
-];
+
 
 // Log out logic
 const handleLogout = () => {
@@ -120,16 +118,6 @@ export function AppSidebar() {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {settingsItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink to={item.url} className={getNavClass(item.url)}>
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={handleLogout}

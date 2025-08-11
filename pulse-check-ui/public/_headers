@@ -1,0 +1,9 @@
+# Set the Content-Type for all .ts and .tsx files
+/main.tsx
+  Content-Type: application/javascript
+
+# Or a more general approach
+# /*.ts
+#   Content-Type: application/javascript
+# /*.tsx
+#   Content-Type: application/javascript

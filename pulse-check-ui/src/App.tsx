@@ -13,7 +13,7 @@ import LeaveRequests from './pages/LeaveRequests';
 import Reports from './pages/Reports';
 import Justifications from './pages/Justifications';
 import Payroll from './pages/Payroll';
-import Settings from './pages/Settings';
+
 import Login from './pages/Login';
 import MyProfile from './pages/MyProfile';
 import MyAttendance from './pages/MyAttendance';
@@ -63,7 +63,7 @@ const AppContent = () => {
           <Route path="/my-justifications" element={<MyJustifications />} />
           <Route path="/my-leave-requests" element={<MyLeaveRequests />} />
           <Route path="/my-payroll" element={<MyPayroll />} />
-          <Route path="/settings" element={<Settings />} />
+          
           <Route path="*" element={<Navigate to="/my-profile" />} />
         </Route>
       </Routes>
@@ -82,7 +82,7 @@ const AppContent = () => {
           <Route path="/reports" element={<Reports />} />
           <Route path="/justifications" element={<Justifications />} />
           <Route path="/payroll" element={<Payroll />} />
-          <Route path="/settings" element={<Settings />} />
+          
           <Route path="/my-profile" element={<MyProfile />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Route>

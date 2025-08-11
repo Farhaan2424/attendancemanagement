@@ -50,11 +50,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ClipLoader } from "react-spinners";
 
-const formatTimeWithMeridian = (
-  time: string | null | undefined,
-  status: string
-): string => {
+// Helper function to format time with AM/PM meridian
+const formatTimeWithMeridian = (time, status) => {
   if (status === "absent") return "—";
   if (!time || !time.includes(":")) return "—";
   const parsed = dayjs(`2023-01-01T${time}`);
@@ -62,10 +61,8 @@ const formatTimeWithMeridian = (
   return parsed.format("h:mm A");
 };
 
-const formatWorkingHours = (
-  value: string | number | null | undefined,
-  status: string
-): string => {
+// Helper function to format working hours
+const formatWorkingHours = (value, status) => {
   if (status === "absent") return "—";
   if (!value || value === "0" || value === "0:0") return "—";
 
@@ -87,10 +84,7 @@ const formatWorkingHours = (
     return `${hours}h ${minutes}min`;
   }
 
-  if (
-    typeof value === "string" &&
-    /^\d{2}:\d{2}:\d{2}\.\d{3}$/.test(value)
-  ) {
+  if (typeof value === "string" && /^\d{2}:\d{2}:\d{2}\.\d{3}$/.test(value)) {
     const parts = value.split(":");
     const hours = parseInt(parts[0]);
     const minutes = parseInt(parts[1]);
@@ -101,58 +95,60 @@ const formatWorkingHours = (
   return "—";
 };
 
-function ensureTimeFormat(time: string): string {
+// Helper function to ensure time is in HH:MM:SS.SSS format
+function ensureTimeFormat(time) {
   if (/^\d{2}:\d{2}:\d{2}\.\d{3}$/.test(time)) return time;
   if (/^\d{2}:\d{2}$/.test(time)) return time + ":00.000";
   console.warn("Invalid time input:", time);
   return "00:00:00.000";
 }
 
-interface AttendanceRecord {
-  id: number;
-  employee: { id: number; name: string; employeeid: string; department: string };
-  checkIn: string;
-  checkOut: string;
-  status: string;
-  workingHours: string;
-  date: string;
-}
+// A generic pagination fetcher to get all records from a Strapi API
+const fetchAllDataWithPagination = async (url, authConfig) => {
+  let allData = [];
+  let page = 1;
+  let hasMore = true;
 
-interface Employee {
-  id: number;
-  name: string;
-  employeeid: string;
-  department: string;
-}
+  while (hasMore) {
+    try {
+      const res = await axios.get(`${url}&pagination[page]=${page}`, authConfig);
+      const { data, meta } = res.data;
+      allData = allData.concat(data);
 
-interface EmployeeAttendanceForm {
-  employeeid: string;
-  checkIn: string;
-  checkOut: string;
-  status: string;
-  date: string;
-  id?: number;
-}
+      const { pageCount } = meta.pagination;
+      if (page >= pageCount) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    } catch (error) {
+      console.error("Pagination fetch error:", error);
+      hasMore = false;
+    }
+  }
+  return allData;
+};
 
 export default function Attendance() {
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+  const [selectedDate, setSelectedDate] = useState(() => {
     const stored = localStorage.getItem("attendanceSelectedDate");
     return stored ? new Date(stored) : new Date();
   });
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [records, setRecords] = useState([]);
   const [stats, setStats] = useState({
     total: 0,
     present: 0,
     late: 0,
     absent: 0,
   });
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
-  const [bulkForm, setBulkForm] = useState<EmployeeAttendanceForm[]>([]);
+  const [bulkForm, setBulkForm] = useState([]);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [editingRecord, setEditingRecord] = useState(null);
   const [editForm, setEditForm] = useState({
     checkIn: "",
     checkOut: "",
@@ -164,25 +160,28 @@ export default function Attendance() {
 
   // --- JWT Token and Auth Config ---
   const token = typeof window !== 'undefined' ? localStorage.getItem("jwt_token") : null;
-
   const authConfig = {
     headers: {
       Authorization: `Bearer ${token}`,
     },
   };
 
-  const fetchRecords = async (date: Date) => {
+  const fetchRecords = async (date) => {
     if (!token) {
       console.error("Authentication token not found. Cannot fetch attendance records.");
+      setLoading(false);
       return;
     }
+    setLoading(true);
     const iso = format(date, "yyyy-MM-dd");
     try {
-      const res = await axios.get(
+      // Use the new pagination helper function
+      const attendanceData = await fetchAllDataWithPagination(
         `${API_URL}?filters[date][$eq]=${iso}&populate=employee`,
-        authConfig // Apply authConfig here
+        authConfig
       );
-      const records: AttendanceRecord[] = res.data.data.map((item: any) => ({
+
+      const records = attendanceData.map((item) => ({
         id: item.id,
         employee: item.attributes.employee.data?.attributes
           ? {
@@ -198,59 +197,71 @@ export default function Attendance() {
       }));
 
       setRecords(records);
-      const total = records.length;
+      const total = employees.length;
       const present = records.filter((r) => r.status === "present").length;
       const late = records.filter((r) => r.status === "late").length;
-      const absent = records.filter((r) => r.status === "absent").length;
+      const absent = employees.length - (present + late);
       setStats({ total, present, late, absent });
     } catch (err) {
       console.error("Failed to fetch attendance records:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchEmployees = async () => {
     if (!token) {
       console.error("Authentication token not found. Cannot fetch employees.");
+      setLoading(false);
       return;
     }
+    setLoading(true);
     try {
-      const res = await axios.get(EMP_API_URL, authConfig); // Apply authConfig here
-      const list = res.data.data.map((e: any) => ({
+      // Use the new pagination helper function to get all employees
+      const employeeData = await fetchAllDataWithPagination(
+        `${EMP_API_URL}?populate=*`,
+        authConfig
+      );
+
+      const list = employeeData.map((e) => ({
         id: e.id,
         name: e.attributes.name,
         employeeid: e.attributes.employeeid,
         department: e.attributes.department,
       }));
-      setEmployees(list.sort((a: Employee, b: Employee) => a.id - b.id));
+      setEmployees(list.sort((a, b) => a.id - b.id));
     } catch (err) {
       console.error("Error loading employees:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     // Only fetch data if the token is present
     if (token) {
-      fetchRecords(selectedDate);
       fetchEmployees();
     }
-  }, [selectedDate, token]); // Add token to dependencies
+  }, [token]);
+
+  useEffect(() => {
+    if (token && employees.length > 0) {
+      fetchRecords(selectedDate);
+    }
+  }, [selectedDate, employees, token]);
 
   useEffect(() => {
     localStorage.setItem("attendanceSelectedDate", selectedDate.toISOString());
   }, [selectedDate]);
 
-  const calculateWorkingHours = (checkIn: string, checkOut: string): number => {
+  const calculateWorkingHours = (checkIn, checkOut) => {
     const start = dayjs(`2023-01-01T${checkIn}`);
     const end = dayjs(`2023-01-01T${checkOut}`);
     if (!start.isValid() || !end.isValid() || end.isBefore(start)) return 0;
     return end.diff(start, "minute");
   };
 
-  const handleBulkFormChange = (
-    index: number,
-    field: keyof EmployeeAttendanceForm,
-    value: string
-  ) => {
+  const handleBulkFormChange = (index, field, value) => {
     setBulkForm((prevForms) => {
       const updatedForms = [...prevForms];
       const form = { ...updatedForms[index], [field]: value };
@@ -314,53 +325,46 @@ export default function Attendance() {
         );
 
         if (existingRecord && form.id) {
-          await axios.put(`${API_URL}/${form.id}`, { data: payload }, authConfig); // Apply authConfig here
+          await axios.put(`${API_URL}/${form.id}`, { data: payload }, authConfig);
         } else if (!existingRecord) {
-          await axios.post(API_URL, { data: payload }, authConfig); // Apply authConfig here
+          await axios.post(API_URL, { data: payload }, authConfig);
         } else if (existingRecord && !form.id) {
-          // Use a custom message box instead of alert
           console.warn(
             `Attendance for ${
               employees.find((e) => String(e.id) === form.employeeid)?.name
             } on this date already exists.`
           );
-          // You might want to display this message in a UI element
         }
       }
 
-      // Use a custom message box instead of alert
       console.log("Attendance records updated successfully!");
       setBulkDialogOpen(false);
       fetchRecords(selectedDate);
     } catch (err) {
       console.error("Submit error:", err);
-      // Use a custom message box instead of alert
       console.error("Error saving attendance. Check console for details.");
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id) => {
     if (!token) {
       console.error("Authentication token not found. Cannot delete record.");
       return;
     }
-    // Implement a custom confirmation dialog here instead of `confirm`
-    const isConfirmed = window.confirm("Are you sure you want to delete this record?"); // For demonstration, keeping `confirm`. Replace with custom UI.
+    const isConfirmed = window.confirm("Are you sure you want to delete this record?");
     if (!isConfirmed) return;
 
     try {
-      await axios.delete(`${API_URL}/${id}`, authConfig); // Apply authConfig here
-      // Use a custom message box instead of alert
+      await axios.delete(`${API_URL}/${id}`, authConfig);
       console.log("Record deleted");
       fetchRecords(selectedDate);
     } catch (err) {
       console.error("Delete error:", err);
-      // Use a custom message box instead of alert
       console.error("Error deleting attendance");
     }
   };
 
-  const handleEditClick = (record: AttendanceRecord) => {
+  const handleEditClick = (record) => {
     setEditingRecord(record);
     setEditForm({
       checkIn: record.status === "absent" ? "" : record.checkIn?.slice(0, 5) || "",
@@ -401,21 +405,19 @@ export default function Attendance() {
         },
       };
       
-      await axios.put(`${API_URL}/${editingRecord.id}`, payload, authConfig); // Apply authConfig here
+      await axios.put(`${API_URL}/${editingRecord.id}`, payload, authConfig);
       
-      // Use a custom message box instead of alert
       console.log("Record updated successfully!");
       setEditDialogOpen(false);
       fetchRecords(selectedDate);
       
     } catch (err) {
       console.error("Update error:", err);
-      // Use a custom message box instead of alert
       console.error("Error updating record. Check console for details.");
     }
   };
 
-  const handleEditFormChange = (field: keyof typeof editForm, value: string) => {
+  const handleEditFormChange = (field, value) => {
     setEditForm(prev => {
       const updated = { ...prev, [field]: value };
       if (field === "status" && value === "absent") {
@@ -430,7 +432,7 @@ export default function Attendance() {
     });
   };
 
-  const iconOf = (s: string) =>
+  const iconOf = (s) =>
     s === "present" ? (
       <CheckCircle2 className="h-4 w-4 text-green-600" />
     ) : s === "late" ? (
@@ -441,10 +443,10 @@ export default function Attendance() {
       <Clock className="h-4 w-4 text-muted-foreground" />
     );
 
-  const badgeOf = (s: string) => {
+  const badgeOf = (s) => {
     const variant =
       s === "present" ? "default" : s === "late" ? "secondary" : "destructive";
-    return <Badge variant={variant as any}>{s}</Badge>;
+    return <Badge variant={variant}>{s}</Badge>;
   };
 
   const openBulkAttendanceDialog = () => {
@@ -623,134 +625,141 @@ export default function Attendance() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        {["Total", "Present", "Late", "Absent"].map((label) => (
-          <Card key={label}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{label}</CardTitle>
-              {label === "Total" ? (
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              ) : label === "Present" ? (
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-              ) : label === "Late" ? (
-                <AlertCircle className="h-4 w-4 text-yellow-500" />
-              ) : (
-                <XCircle className="h-4 w-4 text-red-600" />
-              )}
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <ClipLoader color="#3b82f6" size={50} />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            {["Total", "Present", "Late", "Absent"].map((label) => (
+              <Card key={label}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{label}</CardTitle>
+                  {label === "Total" ? (
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                  ) : label === "Present" ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  ) : label === "Late" ? (
+                    <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-red-600" />
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div
+                    className={cn(
+                      "text-2xl font-bold",
+                      label === "Present"
+                        ? "text-green-600"
+                        : label === "Total"
+                        ? "text-black-600"
+                        : label === "Late"
+                        ? "text-yellow-500"
+                        : label === "Absent"
+                        ? "text-red-600"
+                        : ""
+                    )}
+                  >
+                    {label === "Total"
+                      ? stats.total
+                      : label === "Present"
+                      ? stats.present
+                      : label === "Late"
+                      ? stats.late
+                      : stats.absent}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {label !== "Total" && stats.total
+                      ? `${Math.round(
+                          ((label === "Present"
+                            ? stats.present
+                            : label === "Late"
+                            ? stats.late
+                            : stats.absent) /
+                            stats.total) *
+                            100
+                        )}%`
+                      : ""}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Attendance Records</CardTitle>
+              <CardDescription>Records for {format(selectedDate, "PPPP")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div
-                className={cn(
-                  "text-2xl font-bold",
-                  label === "Present"
-                    ? "text-green-600"
-                    : label === "Total"
-                    ? "text-black-600"
-                    : label === "Late"
-                    ? "text-yellow-500"
-                    : label === "Absent"
-                    ? "text-red-600"
-                    : ""
-                )}
-              >
-                {label === "Total"
-                  ? stats.total
-                  : label === "Present"
-                  ? stats.present
-                  : label === "Late"
-                  ? stats.late
-                  : stats.absent}
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                {label !== "Total" && stats.total
-                  ? `${Math.round(
-                      ((label === "Present"
-                        ? stats.present
-                        : label === "Late"
-                        ? stats.late
-                        : stats.absent) /
-                        stats.total) *
-                        100
-                    )}%`
-                  : ""}
-              </p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Emp ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Check In</TableHead>
+                    <TableHead>Check Out</TableHead>
+                    <TableHead>Working Hours</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {records
+                    .sort(
+                      (a, b) =>
+                        Number(a.employee?.employeeid || 0) -
+                        Number(b.employee?.employeeid || 0)
+                    )
+                    .map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell>{r.employee.employeeid}</TableCell>
+                        <TableCell className="flex items-center gap-2">
+                          {iconOf(r.status)} {r.employee.name}
+                        </TableCell>
+                        <TableCell>{r.employee.department}</TableCell>
+                        <TableCell>
+                          {formatTimeWithMeridian(r.checkIn, r.status)}
+                        </TableCell>
+                        <TableCell>
+                          {formatTimeWithMeridian(r.checkOut, r.status)}
+                        </TableCell>
+                        <TableCell>
+                          {formatWorkingHours(r.workingHours, r.status)}
+                        </TableCell>
+                        <TableCell>{badgeOf(r.status)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="w-8 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-100 transition-all duration-200"
+                              onClick={() => handleEditClick(r)}
+                              title="Edit Record"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="w-8 h-8 text-red-600 hover:text-red-700 hover:bg-red-100 transition-all duration-200"
+                              onClick={() => handleDelete(r.id)}
+                              title="Delete Record"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Attendance Records</CardTitle>
-          <CardDescription>Records for {format(selectedDate, "PPPP")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Emp ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Check In</TableHead>
-                <TableHead>Check Out</TableHead>
-                <TableHead>Working Hours</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {records
-                .sort(
-                  (a, b) =>
-                    Number(a.employee?.employeeid || 0) -
-                    Number(b.employee?.employeeid || 0)
-                )
-                .map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>{r.employee.employeeid}</TableCell>
-                    <TableCell className="flex items-center gap-2">
-                      {iconOf(r.status)} {r.employee.name}
-                    </TableCell>
-                    <TableCell>{r.employee.department}</TableCell>
-                    <TableCell>
-                      {formatTimeWithMeridian(r.checkIn, r.status)}
-                    </TableCell>
-                    <TableCell>
-                      {formatTimeWithMeridian(r.checkOut, r.status)}
-                    </TableCell>
-                    <TableCell>
-                      {formatWorkingHours(r.workingHours, r.status)}
-                    </TableCell>
-                    <TableCell>{badgeOf(r.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="w-8 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-100 transition-all duration-200"
-                          onClick={() => handleEditClick(r)}
-                          title="Edit Record"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="w-8 h-8 text-red-600 hover:text-red-700 hover:bg-red-100 transition-all duration-200"
-                          onClick={() => handleDelete(r.id)}
-                          title="Delete Record"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        </>
+      )}
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>

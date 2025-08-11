@@ -39,10 +39,12 @@ import {
   CircleDollarSign,
   Download,
 } from "lucide-react";
-
+import { jwtDecode } from "jwt-decode";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 
+// NOTE: The 'react-spinners' import was removed as you are using a custom Spinner component.
+//       This will prevent a potential "module not found" error if the package is not installed.
 
 const StatCard = ({ title, value, icon, className }) => (
   <Card className={`shadow-sm transition-shadow hover:shadow-md ${className}`}>
@@ -88,14 +90,16 @@ export default function PayrollSummary() {
   const [attendances, setAttendances] = useState([]);
   const [selectedPayroll, setSelectedPayroll] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [userRole, setUserRole] = useState(null);
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [payrollGenMonth, setPayrollGenMonth] = useState(() => new Date().toLocaleString('default', { month: 'long' }));
   const [payrollGenYear, setPayrollGenYear] = useState(() => new Date().getFullYear().toString());
   const [bulkPayrollData, setBulkPayrollData] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  const [isPermissionDenied, setIsPermissionDenied] = useState(false);
 
-  // --- JWT Token and Auth Config ---
   const token = typeof window !== 'undefined' ? localStorage.getItem("jwt_token") : null;
 
   const authConfig = useMemo(() => ({
@@ -114,19 +118,30 @@ export default function PayrollSummary() {
     setIsLoading(true);
     try {
       const api = axios.create({ baseURL: "http://localhost:1337/api" });
-      const fetchAllPages = async (endpoint) => {
-        const firstRes = await api.get(`${endpoint}?pagination[page]=1&pagination[pageSize]=100&populate=employee`, authConfig); // Apply authConfig
-        const pageCount = firstRes.data.meta.pagination.pageCount;
-        let allData = firstRes.data.data;
 
-        if (pageCount > 1) {
-          const promises = [];
-          for (let page = 2; page <= pageCount; page++) {
-            promises.push(api.get(`${endpoint}?pagination[page]=${page}&pagination[pageSize]=100&populate=employee`, authConfig)); // Apply authConfig
+      // NEW: Refactored fetchAllPages to be more robust.
+      // This version will continue fetching pages in a loop until it gets an empty result,
+      // ensuring all data is retrieved even if the backend's pagination metadata is unreliable.
+      const fetchAllPages = async (endpoint, pageSize = 100) => {
+        let allData = [];
+        let page = 1;
+        let hasMoreData = true;
+
+        while (hasMoreData) {
+          const response = await api.get(`${endpoint}?pagination[page]=${page}&pagination[pageSize]=${pageSize}&populate=employee`, authConfig);
+          const pageData = response.data.data;
+          
+          if (pageData && pageData.length > 0) {
+            allData = [...allData, ...pageData];
+            // Check if this is the last page based on the number of items returned
+            if (pageData.length < pageSize) {
+              hasMoreData = false;
+            } else {
+              page++;
+            }
+          } else {
+            hasMoreData = false; // No more data to fetch
           }
-          const subsequentRes = await Promise.all(promises);
-          const subsequentData = subsequentRes.flatMap(res => res.data.data);
-          allData = [...allData, ...subsequentData];
         }
         return allData;
       };
@@ -154,13 +169,23 @@ export default function PayrollSummary() {
   };
 
   useEffect(() => {
+    if (token) {
+      try {
+        const user = JSON.parse(localStorage.getItem("user"));
+        const roleType = user?.role?.type;
+        setUserRole(roleType);
+        
+      } catch (error) {
+        console.error("Failed to parse user data from local storage:", error);
+        setUserRole(null);
+      }
+    }
     fetchData();
-  }, [token]); // Re-fetch data when token changes
+  }, [token]);
 
   useEffect(() => {
     if (isCreateDialogOpen) {
-      // Re-fetch data when dialog opens to ensure latest data for payroll generation
-      fetchData();
+      prepareBulkPayroll();
     }
   }, [isCreateDialogOpen]);
 
@@ -237,12 +262,12 @@ export default function PayrollSummary() {
   };
 
   const breakdown = (emp, absent, lateCount, totalWorkingDays, monthlyCTC) => {
-    
-    const basic = monthlyCTC * 0.5; 
-    const hra = basic * 0.4; 
-    const transport = hra *0.30; 
-    const medical = transport * 0.80; 
-    const fixed = monthlyCTC - (basic + hra + transport + medical); 
+
+    const basic = monthlyCTC * 0.5;
+    const hra = basic * 0.4;
+    const transport = hra * 0.30;
+    const medical = transport * 0.80;
+    const fixed = monthlyCTC - (basic + hra + transport + medical);
 
     const professionalTax = 200;
     const tds = 2289;
@@ -360,11 +385,11 @@ export default function PayrollSummary() {
       };
       try {
         if (data.existingPayrollId) {
-          await axios.put(`http://localhost:1337/api/payrolls/${data.existingPayrollId}`, payload, authConfig); // Apply authConfig
+          await axios.put(`http://localhost:1337/api/payrolls/${data.existingPayrollId}`, payload, authConfig);
           generationResults.push({ name: data.name, status: "Updated" });
           successCount++;
         } else {
-          await axios.post("http://localhost:1337/api/payrolls", payload, authConfig); // Apply authConfig
+          await axios.post("http://localhost:1337/api/payrolls", payload, authConfig);
           generationResults.push({ name: data.name, status: "Generated" });
           successCount++;
         }
@@ -440,7 +465,6 @@ export default function PayrollSummary() {
             padding: 4px 8px;
             text-align: left;
             font-size: 10px;
-            
           }
           .pdf-table th {
             background-color: #f2f2f2;
@@ -459,7 +483,7 @@ export default function PayrollSummary() {
           .text-center { text-align: center; }
           .w-100 { width: 100%; }
         </style>
-        
+
         <div class="flex justify-between" style="font-size: 11px;">
           <p></p>
           <p class="font-bold">Salary Slip: ${month} ${year}</p>
@@ -475,7 +499,6 @@ export default function PayrollSummary() {
               <p style="margin-top: 5px; pb-3"><span class="font-bold">Present for no. of days:</span> ${presentIncludingLate}</p>
             </div>
         </div>
-
         <div class="flex justify-between" style="margin-top: 20px; gap: 20px;">
           <div style="width: 90%;">
             <p class="font-bold text-center pt-5" style="margin-bottom:10px; gap: 10px;">EARNINGS</p>
@@ -571,7 +594,7 @@ export default function PayrollSummary() {
 
     try {
       const canvas = await html2canvas(tempElement, {
-        scale: 2, 
+        scale: 2,
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -594,13 +617,20 @@ export default function PayrollSummary() {
       document.body.removeChild(tempElement);
     }
   };
+  
+  const handleCreatePayrollClick = () => {
+    if (userRole === 'admin') {
+      setIsCreateDialogOpen(true);
+    } else {
+      setIsPermissionDenied(true);
+    }
+  };
 
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen font-sans">
       <h1 className="text-3xl font-extrabold text-gray-900 mb-6">Payroll Dashboard</h1>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
-        
         <StatCard
           title="Total Payrolls"
           value={payrollSummary.totalPayrolls}
@@ -632,7 +662,10 @@ export default function PayrollSummary() {
               <SelectTrigger className="w-[100px] bg-white border border-gray-300"><SelectValue /></SelectTrigger>
               <SelectContent>{["2023", "2024", "2025", "2026"].map((y) => (<SelectItem key={y} value={y}>{y}</SelectItem>))}</SelectContent>
             </Select>
-            <Button onClick={() => setIsCreateDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all duration-200 ease-in-out">
+            <Button
+              onClick={handleCreatePayrollClick}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all duration-200 ease-in-out"
+            >
               <Download size={16} className="mr-2" />
               Create Payroll
             </Button>
@@ -716,12 +749,11 @@ export default function PayrollSummary() {
                 return (
                   <>
                     <div className="flex items-center justify-between p-4 bg-gray-100 rounded-md">
-                      
                       <div>
                         <div className="text-lg font-bold">MONTHLY CTC</div>
                         <div className="text-lg font-semibold">₹{calc.monthlyCTC.toLocaleString('en-IN')} per month</div>
                       </div>
-                       <div>
+                      <div>
                         <div className="text-lg font-bold">ANNUAL CTC</div>
                         <div className="text-lg font-semibold">₹{calc.annualCTC.toLocaleString('en-IN')} per year</div>
                       </div>
@@ -757,7 +789,6 @@ export default function PayrollSummary() {
                         <span className="text-right text-red-600">- ₹{calc.tds.toFixed(2)}</span>
                         {calc.absentDeduction > 0 && (
                           <>
-
                             <span>Deduction for {absent} Absent Day(s)</span>
                             <span className="text-right text-red-600">- ₹{calc.absentDeduction.toFixed(2)}</span>
                           </>
@@ -865,6 +896,20 @@ export default function PayrollSummary() {
               {isGenerating && <Spinner />}
               {isGenerating ? 'Processing...' : `Generate/Update Payroll for ${bulkPayrollData.length} Employees`}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isPermissionDenied} onOpenChange={setIsPermissionDenied}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Permission Denied</DialogTitle>
+          </DialogHeader>
+          <div className="text-center p-4">
+            <p>You don't have permission to access this feature.</p>
+            <p className="mt-2 text-sm text-gray-500">Only an administrator can create payrolls.</p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsPermissionDenied(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

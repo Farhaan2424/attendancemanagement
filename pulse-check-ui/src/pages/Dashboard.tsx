@@ -20,7 +20,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,8 +50,10 @@ export default function Dashboard() {
   const [bulkAttendance, setBulkAttendance] = useState([]);
   const [bulkAttendanceDate, setBulkAttendanceDate] = useState(dayjs().format("YYYY-MM-DD"));
 
-  // ADDED: New state for the logged-in user's profile
+  // New state for the logged-in user's profile and loading status
   const [profile, setProfile] = useState(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+  const [showRestrictionDialog, setShowRestrictionDialog] = useState(false);
 
   const token = localStorage.getItem("jwt_token");
   const API_BASE_URL = "http://localhost:1337/api";
@@ -69,7 +70,6 @@ export default function Dashboard() {
       setStats((prevStats) => ({
         ...prevStats,
         totalEmployees: data.totalEmployees || prevStats.totalEmployees,
-
       }));
       setPendingActions(data.pendingActions || []);
     } catch (error) {
@@ -80,7 +80,7 @@ export default function Dashboard() {
   const fetchEmployees = async () => {
     if (!token) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/employees`, {
+      const res = await fetch(`${API_BASE_URL}/employees?pagination[pageSize]=10000000000`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -105,7 +105,7 @@ export default function Dashboard() {
   const fetchAttendanceByDate = async (date) => {
     if (!token) return [];
     try {
-      const res = await fetch(`${API_BASE_URL}/attendances?filters[date][$eq]=${date}&populate=employee`, {
+      const res = await fetch(`${API_BASE_URL}/attendances?filters[date][$eq]=${date}&populate=employee&pagination[pageSize]=100000000000`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
@@ -123,19 +123,30 @@ export default function Dashboard() {
     }
   };
 
-  // ADDED: Function to fetch the logged-in user's profile with populated employee data
+  // Function to fetch the logged-in user's profile with populated employee data
   const fetchProfile = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/users/me?populate=employee`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setProfile(data);
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
+  if (!token) return;
+  setIsProfileLoading(true);
+  try {
+    // Assuming Strapi provides a `/api/users/me` endpoint
+    const res = await fetch(`${API_BASE_URL}/users/me?populate=role`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    
+    if (!res.ok) {
+        throw new Error("Failed to fetch user profile.");
     }
-  };
+    
+    const user = await res.json();
+    setProfile(user); // Set the profile state with the fetched user object
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    // Handle error, e.g., clear profile state
+    setProfile(null);
+  } finally {
+    setIsProfileLoading(false);
+  }
+};
 
   const calculateDashboardStats = () => {
     const presentToday = attendance.filter(record => record.status === 'present').length;
@@ -180,13 +191,12 @@ export default function Dashboard() {
     setBulkAttendance(newBulkAttendance);
   };
 
-  // UPDATED: The useEffect hook now calls fetchProfile
   useEffect(() => {
     if (token) {
       fetchDashboard();
       fetchEmployees();
       fetchAttendanceByDate(dayjs().format("YYYY-MM-DD")).then(setAttendance);
-      fetchProfile(); // <-- ADDED
+      fetchProfile();
     }
   }, [token]);
 
@@ -195,8 +205,19 @@ export default function Dashboard() {
   }, [attendance]);
 
   const handleOpenDialog = async () => {
-    setIsDialogOpen(true);
-    await initializeBulkAttendance(employees, bulkAttendanceDate);
+    if (isProfileLoading) {
+      return;
+    }
+
+    const userRoleName = profile?.role?.name;
+    const allowedRoles = ["Admin", "HR"]; // The roles that are allowed to mark attendance
+
+    if (userRoleName && allowedRoles.includes(userRoleName)) {
+      setIsDialogOpen(true);
+      await initializeBulkAttendance(employees, bulkAttendanceDate);
+    } else {
+      setShowRestrictionDialog(true); // Show the restriction dialog for all other roles
+    }
   };
 
   const handleBulkChange = (index, field, value) => {
@@ -234,7 +255,6 @@ export default function Dashboard() {
     );
 
     if (entriesToSubmit.length === 0) {
-
       console.warn("No new attendance data to submit.");
       return;
     }
@@ -312,7 +332,6 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          {/* UPDATED: Dynamic welcome message */}
           <h1 className="text-3xl font-bold tracking-tight">
             {profile ? `Welcome, ${profile.employee?.name || profile.username || "Back"}!` : "Dashboard"}
           </h1>
@@ -321,98 +340,10 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-
-          
-
-
-          <DialogTrigger asChild>
-            <Button onClick={handleOpenDialog}>
-              <Clock className="mr-2 h-4 w-4" />
-              Mark Attendance
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-5xl overflow-auto max-h-[80vh]">
-            <DialogHeader>
-              <DialogTitle>Mark Attendance</DialogTitle>
-              <DialogDescription>
-                Mark attendance for all employees on the selected date.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmitAllAttendance} className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="bulk-date">Attendance Date:</Label>
-                <Input
-                  id="bulk-date"
-                  type="date"
-                  value={bulkAttendanceDate}
-                  onChange={(e) => handleBulkDateChange(e.target.value)}
-                  className="w-48"
-                />
-              </div>
-
-              <div className="grid gap-4">
-                {employees.map((emp, index) => {
-                  const entry = bulkAttendance[index] || {};
-                  const isAbsent = entry.status === "absent";
-                  const alreadyMarked = entry.marked;
-
-                  return (
-                    <div
-                      key={emp.id}
-                      className={`grid grid-cols-6 items-center gap-4 border p-2 rounded ${alreadyMarked ? "bg-gray-100 opacity-70" : ""
-                        }`}
-                    >
-                      <Label className="col-span-2 text-sm font-medium">
-                        {emp.attributes.name}
-                        {alreadyMarked && <Badge className="ml-2" variant="secondary">Marked</Badge>}
-                      </Label>
-                      <Input
-                        placeholder="Check In"
-                        value={entry.checkIn}
-                        disabled={alreadyMarked || isAbsent}
-                        onChange={(e) =>
-                          handleBulkChange(index, "checkIn", e.target.value)
-                        }
-                        className="col-span-1"
-
-                      />
-                      <Input
-                        placeholder="Check Out"
-                        value={entry.checkOut}
-                        disabled={alreadyMarked || isAbsent}
-                        onChange={(e) =>
-                          handleBulkChange(index, "checkOut", e.target.value)
-                        }
-                        className="col-span-1"
-
-                      />
-                      <Select
-                        value={entry.status}
-                        onValueChange={(value) =>
-                          handleBulkChange(index, "status", value)
-                        }
-                        disabled={alreadyMarked}
-                      >
-                        <SelectTrigger className="col-span-2">
-                          <SelectValue placeholder="Select Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="present">Present</SelectItem>
-                          <SelectItem value="late">Late</SelectItem>
-                          <SelectItem value="absent">Absent</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                })}
-              </div>
-              <DialogFooter className="pt-4">
-                <Button type="submit">Submit Marked Attendance</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Removed DialogTrigger and added direct onClick handler */}
+        <Button onClick={handleOpenDialog} disabled={isProfileLoading}>
+          {isProfileLoading ? "Loading..." : <><Clock className="mr-2 h-4 w-4" />Mark Attendance</>}
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -486,8 +417,8 @@ export default function Dashboard() {
                         <span className="text-xs text-muted-foreground mt-1">
                           {record.checkIn
                             ? dayjs(`1970-01-01T${record.checkIn}`).format(
-                              "hh:mm A"
-                            )
+                                "hh:mm A"
+                              )
                             : record.status === "absent"
                               ? "N/A"
                               : "Not Checked Out"}
@@ -533,6 +464,103 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Main Bulk Attendance Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-5xl overflow-auto max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Mark Attendance</DialogTitle>
+            <DialogDescription>
+              Mark attendance for all employees on the selected date.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmitAllAttendance} className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="bulk-date">Attendance Date:</Label>
+              <Input
+                id="bulk-date"
+                type="date"
+                value={bulkAttendanceDate}
+                onChange={(e) => handleBulkDateChange(e.target.value)}
+                className="w-48"
+              />
+            </div>
+            <div className="grid gap-4">
+              {employees.map((emp, index) => {
+                const entry = bulkAttendance[index] || {};
+                const isAbsent = entry.status === "absent";
+                const alreadyMarked = entry.marked;
+
+                return (
+                  <div
+                    key={emp.id}
+                    className={`grid grid-cols-6 items-center gap-4 border p-2 rounded ${alreadyMarked ? "bg-gray-100 opacity-70" : ""}`}
+                  >
+                    <Label className="col-span-2 text-sm font-medium">
+                      {emp.attributes.name}
+                      {alreadyMarked && <Badge className="ml-2" variant="secondary">Marked</Badge>}
+                    </Label>
+                    <Input
+                      placeholder="Check In"
+                      value={entry.checkIn}
+                      disabled={alreadyMarked || isAbsent}
+                      onChange={(e) =>
+                        handleBulkChange(index, "checkIn", e.target.value)
+                      }
+                      className="col-span-1"
+                    />
+                    <Input
+                      placeholder="Check Out"
+                      value={entry.checkOut}
+                      disabled={alreadyMarked || isAbsent}
+                      onChange={(e) =>
+                        handleBulkChange(index, "checkOut", e.target.value)
+                      }
+                      className="col-span-1"
+                    />
+                    <Select
+                      value={entry.status}
+                      onValueChange={(value) =>
+                        handleBulkChange(index, "status", value)
+                      }
+                      disabled={alreadyMarked}
+                    >
+                      <SelectTrigger className="col-span-2">
+                        <SelectValue placeholder="Select Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="present">Present</SelectItem>
+                        <SelectItem value="late">Late</SelectItem>
+                        <SelectItem value="absent">Absent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })}
+            </div>
+            <DialogFooter className="pt-4">
+              <Button type="submit">Submit Marked Attendance</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Dialog for Access Restriction */}
+      <Dialog open={showRestrictionDialog} onOpenChange={setShowRestrictionDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Access Denied</DialogTitle>
+            <DialogDescription>
+              You are not allowed to mark attendance.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-start">
+            <Button type="button" onClick={() => setShowRestrictionDialog(false)}>
+              OK
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

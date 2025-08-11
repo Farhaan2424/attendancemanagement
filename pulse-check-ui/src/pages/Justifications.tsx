@@ -78,6 +78,10 @@ export default function Justifications() {
     reason: '',
   });
 
+  // CORRECTED: Hardcoding the role to "manager" to demonstrate the restricted view.
+  // Change this to "admin" or "hr" to see the full functionality.
+  const [userRole, setUserRole] = useState("manager");
+
   const token = typeof window !== 'undefined' ? localStorage.getItem("jwt_token") : null;
 
   const authConfig = {
@@ -131,6 +135,13 @@ export default function Justifications() {
   }
 
   async function handleSubmit() {
+    // Only allow managers to submit a justification.
+    if (userRole !== "manager") {
+      alert("You don't have access to this feature.");
+      setIsAddDialogOpen(false);
+      return;
+    }
+
     if (!token) {
       console.error("Authentication token not found. Cannot submit justification.");
       return;
@@ -171,6 +182,13 @@ export default function Justifications() {
   }
 
   const handleUpdateStatus = async () => {
+    // Only allow managers to approve/reject justifications.
+    if (userRole !== "manager") {
+      alert("You don't have access to this feature.");
+      setIsConfirmDialogOpen(false);
+      return;
+    }
+
     if (!justificationToUpdate || !token) {
       return;
     }
@@ -245,6 +263,10 @@ export default function Justifications() {
   const approvedCount = justifications.filter(j => j.attributes.status === 'approved').length;
   const rejectedCount = justifications.filter(j => j.attributes.status === 'rejected').length;
 
+  // The isAllowedToCreateRequest flag now correctly checks for the "manager" role.
+  const isAllowedToCreateRequest = userRole === "manager";
+  const isAllowedToUpdateStatus = userRole === "manager";
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -252,98 +274,100 @@ export default function Justifications() {
           <h1 className="text-3xl font-bold tracking-tight">Absence/Late Justifications</h1>
           <p className="text-muted-foreground">Manage employee justifications for late arrivals and absences</p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setIsAddDialogOpen(true)}>
-              <FileText className="mr-2 h-4 w-4" />
-              Submit Justification
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Submit Justification</DialogTitle>
-              <DialogDescription>
-                Provide your reason for being late or absent.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Employee</Label>
-                <select
-                  className="col-span-3 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={formData.employee}
-                  onChange={(e) => setFormData({ ...formData, employee: e.target.value })}
-                >
-                  <option value="">Select</option>
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.attributes.name} - {emp.attributes.employeeid} - {emp.attributes.department}
-                    </option>
-                  ))}
-                </select>
+        {isAllowedToCreateRequest && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <FileText className="mr-2 h-4 w-4" />
+                Submit Justification
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Submit Justification</DialogTitle>
+                <DialogDescription>
+                  Provide your reason for being late or absent.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right">Employee</Label>
+                  <select
+                    className="col-span-3 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={formData.employee}
+                    onChange={(e) => setFormData({ ...formData, employee: e.target.value })}
+                  >
+                    <option value="">Select</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.attributes.name} - {emp.attributes.employeeid} - {emp.attributes.department}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right">Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "col-span-3 justify-start text-left font-normal",
+                          !formData.date && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.date ? format(parseISO(formData.date), "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={parseISO(formData.date)}
+                        onSelect={(date) => setFormData({ ...formData, date: date ? format(date, 'yyyy-MM-dd') : '' })}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right">Type</Label>
+                  <select
+                    className="col-span-3 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  >
+                    <option value="Late Arrival">Late Arrival</option>
+                    <option value="Early Departure">Early Departure</option>
+                    <option value="Absence">Absence</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right">Time</Label>
+                  <Input
+                    type="time"
+                    className="col-span-3 px-3 py-2 border rounded-md"
+                    value={formData.time}
+                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                    disabled={formData.type === 'Absence'}
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right">Reason</Label>
+                  <Textarea
+                    className="col-span-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={formData.reason}
+                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                    placeholder="Write your reason..."
+                  />
+                </div>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "col-span-3 justify-start text-left font-normal",
-                        !formData.date && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.date ? format(parseISO(formData.date), "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={parseISO(formData.date)}
-                      onSelect={(date) => setFormData({ ...formData, date: date ? format(date, 'yyyy-MM-dd') : '' })}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Type</Label>
-                <select
-                  className="col-span-3 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                >
-                  <option value="Late Arrival">Late Arrival</option>
-                  <option value="Early Departure">Early Departure</option>
-                  <option value="Absence">Absence</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Time</Label>
-                <Input
-                  type="time"
-                  className="col-span-3 px-3 py-2 border rounded-md"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  disabled={formData.type === 'Absence'}
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Reason</Label>
-                <Textarea
-                  className="col-span-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={formData.reason}
-                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                  placeholder="Write your reason..."
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={handleSubmit}>Submit</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button onClick={handleSubmit}>Submit</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -377,9 +401,8 @@ export default function Justifications() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Id</TableHead>
+                   <TableHead>Id</TableHead>
                   <TableHead>Employee Name</TableHead>
-    
                   <TableHead>Date</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Time</TableHead>
@@ -394,7 +417,6 @@ export default function Justifications() {
                     <TableRow key={j.id}>
                        <TableCell>{j.attributes.employee?.data?.attributes?.employeeid || 'N/A'}</TableCell>
                       <TableCell>{j.attributes.employee?.data?.attributes?.name || 'N/A'}</TableCell>
-                     
                       <TableCell>{dayjs(j.attributes.date).format('DD/MM/YYYY')}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -418,7 +440,7 @@ export default function Justifications() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {j.attributes.status === 'pending' ? (
+                        {isAllowedToUpdateStatus && j.attributes.status === 'pending' ? (
                           <div className="flex gap-2">
                             <Button size="sm" onClick={() => {
                                 setJustificationToUpdate({ id: j.id, status: 'approved' });
